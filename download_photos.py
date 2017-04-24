@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+from __future__ import print_function
 import click
 import os
 import sys
@@ -54,7 +55,7 @@ def download(directory, username, password, size, recent, \
     icloud = authenticate(username, password)
     updatePhotos(icloud)
 
-    print "Looking up all photos..."
+    print("Looking up all photos...")
     photos = icloud.photos.all.photos
 
     # Optional: Only download the x most recent photos.
@@ -64,9 +65,9 @@ def download(directory, username, password, size, recent, \
     photos_count = len(photos)
 
     if download_videos:
-        print "Downloading %d %s photos and videos to %s/ ..." % (photos_count, size, directory)
+        print("Downloading %d %s photos and videos to %s/ ..." % (photos_count, size, directory))
     else:
-        print "Downloading %d %s photos to %s/ ..." % (photos_count, size, directory)
+        print("Downloading %d %s photos to %s/ ..." % (photos_count, size, directory))
 
     progress_bar = tqdm(photos, total=photos_count)
 
@@ -84,7 +85,7 @@ def download(directory, username, password, size, recent, \
                 try:
                     created_date = parse(photo.created)
                 except TypeError:
-                    print "Could not find created date for photo!"
+                    print("Could not find created date for photo!")
                     continue
 
                 date_path = '{:%Y/%m/%d}'.format(created_date)
@@ -103,10 +104,10 @@ def download(directory, username, password, size, recent, \
         else:
             tqdm.write("Could not process %s! Maybe try again later." % photo.filename)
 
-    print "All photos have been downloaded!"
+    print("All photos have been downloaded!")
 
     if auto_delete:
-        print "Deleting any files found in 'Recently Deleted'..."
+        print("Deleting any files found in 'Recently Deleted'...")
 
         recently_deleted = icloud.photos.albums['Recently Deleted']
 
@@ -119,55 +120,55 @@ def download(directory, username, password, size, recent, \
             path = '/'.join((download_dir, filename))
 
             if os.path.exists(path):
-                print "Deleting %s!" % path
+                print("Deleting %s!" % path)
                 os.remove(path)
 
 
 def authenticate(username, password):
-    print "Signing in..."
+    print("Signing in...")
     icloud = pyicloud.PyiCloudService(username, password)
 
     if icloud.requires_2fa:
-        print "Two-factor authentication required. Your trusted devices are:"
+        print("Two-factor authentication required. Your trusted devices are:")
 
         devices = icloud.trusted_devices
         for i, device in enumerate(devices):
-            print "  %s: %s" % (i, device.get('deviceName',
-                "SMS to %s" % device.get('phoneNumber')))
+            print("  %s: %s" % (i, device.get('deviceName',
+                "SMS to %s" % device.get('phoneNumber'))))
 
         device = click.prompt('Which device would you like to use?', default=0)
         device = devices[device]
         if not icloud.send_verification_code(device):
-            print "Failed to send verification code"
+            print("Failed to send verification code")
             sys.exit(1)
 
         code = click.prompt('Please enter validation code')
         if not icloud.validate_verification_code(device, code):
-            print "Failed to verify verification code"
+            print("Failed to verify verification code")
             sys.exit(1)
 
     return icloud
 
 # See: https://github.com/picklepete/pyicloud/pull/100
 def updatePhotos(icloud):
-    print "Updating photos..."
+    print("Updating photos...")
     try:
         icloud.photos.update()
     except pyicloud.exceptions.PyiCloudAPIResponseError as exception:
-        print exception
-        print
+        print(exception)
+        print()
         print(
             "This error usually means that Apple's servers are getting ready "
             "to send you data about your photos.")
         print(
             "This process can take around 5-10 minutes, and it only happens when "
             "you run the script for the very first time.")
-        print "Please wait a few minutes, then try again."
-        print
+        print("Please wait a few minutes, then try again.")
+        print()
         print(
             "(If you are still seeing this message after 30 minutes, "
             "then please open an issue on GitHub.)")
-        print
+        print()
         sys.exit(1)
 
 def truncate_middle(s, n):
