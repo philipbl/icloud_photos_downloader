@@ -9,6 +9,7 @@ import time
 from tqdm import tqdm
 from dateutil.parser import parse
 import pyicloud
+import pytz
 
 # For retrying connection after timeouts and errors
 MAX_RETRIES = 5
@@ -44,13 +45,17 @@ CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
               help='Scans the "Recently Deleted" folder and deletes any files found in there. ' + \
                    '(If you restore the photo in iCloud, it will be downloaded again.)',
               is_flag=True)
+@click.option('--start',
+              help='Start date to get pictures.')
 
 
 def download(directory, username, password, size, recent, \
-    download_videos, force_size, auto_delete):
+    download_videos, force_size, auto_delete, start):
     """Download all iCloud photos to a local directory"""
 
     directory = directory.rstrip('/')
+    start_date = parse(start)
+    start_date = start_date.replace(tzinfo=pytz.utc)
 
     icloud = authenticate(username, password)
     updatePhotos(icloud)
@@ -72,37 +77,37 @@ def download(directory, username, password, size, recent, \
     progress_bar = tqdm(photos, total=photos_count)
 
     for photo in progress_bar:
-        for _ in range(MAX_RETRIES):
+        try:
+            if not download_videos \
+                and not photo.filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+
+                progress_bar.set_description(
+                    "Skipping %s, only downloading photos." % photo.filename)
+                continue
+
             try:
-                if not download_videos \
-                    and not photo.filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+                created_date = parse(photo.created)
+            except TypeError:
+                print("Could not find created date for photo!")
+                continue
 
-                    progress_bar.set_description(
-                        "Skipping %s, only downloading photos." % photo.filename)
-                    continue
+            if created_date < start_date:
+                progress_bar.set_description(
+                    "Skipping %s, start date" % photo.filename)
+                continue
 
-                created_date = None
-                try:
-                    created_date = parse(photo.created)
-                except TypeError:
-                    print("Could not find created date for photo!")
-                    continue
+            date_path = '{:%Y/%m/%d}'.format(created_date)
+            download_dir = '/'.join((directory, date_path))
 
-                date_path = '{:%Y/%m/%d}'.format(created_date)
-                download_dir = '/'.join((directory, date_path))
+            if not os.path.exists(download_dir):
+                os.makedirs(download_dir)
 
-                if not os.path.exists(download_dir):
-                    os.makedirs(download_dir)
+            download_photo(photo, size, force_size, download_dir, progress_bar)
+            break
 
-                download_photo(photo, size, force_size, download_dir, progress_bar)
-                break
-
-            except (requests.exceptions.ConnectionError, socket.timeout):
-                tqdm.write('Connection failed, retrying after %d seconds...' % WAIT_SECONDS)
-                time.sleep(WAIT_SECONDS)
-
-        else:
-            tqdm.write("Could not process %s! Maybe try again later." % photo.filename)
+        except (requests.exceptions.ConnectionError, socket.timeout):
+            tqdm.write('Connection failed, retrying after %d seconds...' % WAIT_SECONDS)
+            time.sleep(WAIT_SECONDS)
 
     print("All photos have been downloaded!")
 
