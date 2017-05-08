@@ -110,7 +110,7 @@ def download(directory, username, password, size, recent, \
                 print 'Connection failed, retrying after %d seconds...' % WAIT_SECONDS
                 time.sleep(WAIT_SECONDS)
         else:
-            print "Could not process %s! Maybe try again later." % photo.filename
+            print "\tCould not process %s! Maybe try again later." % photo.filename
 
 
     print "All photos have been downloaded!"
@@ -197,7 +197,7 @@ def download_photo(photo, size, force_size, download_dir):
     truncated_path = truncate_middle(download_path, 72)
 
     if os.path.isfile(download_path):
-        print "%s already exists." % truncated_path
+        print "\t%s already exists." % truncated_path
         return
 
     # Fall back to original if requested size is not available
@@ -205,7 +205,7 @@ def download_photo(photo, size, force_size, download_dir):
         download_photo(photo, 'original', True, download_dir)
         return
 
-    print "Downloading %s to %s" % (truncated_filename, truncated_path)
+    print "\tDownloading %s to %s" % (truncated_filename, truncated_path)
 
     for _ in range(MAX_RETRIES):
         try:
@@ -226,7 +226,7 @@ def download_photo(photo, size, force_size, download_dir):
             print '%s download failed, retrying after %d seconds...' % (photo.filename, WAIT_SECONDS)
             time.sleep(WAIT_SECONDS)
     else:
-        print "Could not download %s! Maybe try again later." % photo.filename
+        print "\tCould not download %s! Maybe try again later." % photo.filename
 
 
 if __name__ == '__main__':
