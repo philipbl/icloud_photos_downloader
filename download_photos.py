@@ -43,13 +43,22 @@ CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
               help='Scans the "Recently Deleted" folder and deletes any files found in there. ' + \
                    '(If you restore the photo in iCloud, it will be downloaded again.)',
               is_flag=True)
+@click.option('--start',
+              help='Start date to get pictures.')
 
 
 def download(directory, username, password, size, recent, \
-    download_videos, force_size, auto_delete):
+    download_videos, force_size, auto_delete, start):
     """Download all iCloud photos to a local directory"""
+    import pytz
 
     directory = directory.rstrip('/')
+
+    if start:
+        start_date = parse(start)
+        start_date = start_date.replace(tzinfo=pytz.utc)
+    else:
+        start_date = None
 
     icloud = authenticate(username, password)
     updatePhotos(icloud)
@@ -86,6 +95,11 @@ def download(directory, username, password, size, recent, \
                 except TypeError:
                     print "Could not find created date for photo!"
                     continue
+
+                if start_date and created_date < start_date:
+                    print "Skipping {} ({} < {})".format(photo.filename, created_date, start_date)
+                    continue
+                print "Downloading {} ({})".format(photo.filename, created_date)
 
                 date_path = '{:%Y/%m/%d}'.format(created_date)
                 download_dir = '/'.join((directory, date_path))
