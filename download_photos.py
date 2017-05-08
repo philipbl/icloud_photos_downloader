@@ -76,7 +76,7 @@ def download(directory, username, password, size, recent, \
     else:
         print "Downloading %d %s photos to %s/ ..." % (photos_count, size, directory)
 
-    for photo in photos:
+    for i, photo in enumerate(photos):
         try:
             if not download_videos \
                 and not photo.filename.lower().endswith(('.png', '.jpg', '.jpeg')):
@@ -93,9 +93,9 @@ def download(directory, username, password, size, recent, \
                 continue
 
             if start_date and created_date < start_date:
-                print "Skipping {} ({} < {})".format(photo.filename, created_date, start_date)
+                print "{}/{}: Skipping {} ({} < {})".format(i, photos_count, photo.filename, created_date, start_date)
                 continue
-            print "Downloading {} ({})".format(photo.filename, created_date)
+            print "{}/{}: Downloading {} ({})".format(i, photos_count, photo.filename, created_date)
 
             date_path = '{:%Y/%m/%d}'.format(created_date)
             download_dir = '/'.join((directory, date_path))
