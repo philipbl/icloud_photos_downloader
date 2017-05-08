@@ -77,37 +77,41 @@ def download(directory, username, password, size, recent, \
         print "Downloading %d %s photos to %s/ ..." % (photos_count, size, directory)
 
     for i, photo in enumerate(photos):
-        try:
-            if not download_videos \
-                and not photo.filename.lower().endswith(('.png', '.jpg', '.jpeg')):
-
-                print "Skipping %s, only downloading photos." % photo.filename
-                continue
-
-            created_date = None
+        for _ in range(MAX_RETRIES):
             try:
-                created_date = parse(photo.created)
-            except TypeError:
-                print "Could not find created date for photo!"
-                continue
+                if not download_videos \
+                    and not photo.filename.lower().endswith(('.png', '.jpg', '.jpeg')):
 
-            if start_date and created_date < start_date:
-                print "{}/{}: Skipping {} ({} < {})".format(i, photos_count, photo.filename, created_date, start_date)
-                continue
-            print "{}/{}: Downloading {} ({})".format(i, photos_count, photo.filename, created_date)
+                    print "Skipping %s, only downloading photos." % photo.filename
+                    continue
 
-            date_path = '{:%Y/%m/%d}'.format(created_date)
-            download_dir = '/'.join((directory, date_path))
+                created_date = None
+                try:
+                    created_date = parse(photo.created)
+                except TypeError:
+                    print "Could not find created date for photo!"
+                    continue
 
-            if not os.path.exists(download_dir):
-                os.makedirs(download_dir)
+                if start_date and created_date < start_date:
+                    print "{}/{}: Skipping {} ({} < {})".format(i, photos_count, photo.filename, created_date, start_date)
+                    continue
+                print "{}/{}: Downloading {} ({})".format(i, photos_count, photo.filename, created_date)
 
-            download_photo(photo, size, force_size, download_dir)
-            break
+                date_path = '{:%Y/%m/%d}'.format(created_date)
+                download_dir = '/'.join((directory, date_path))
 
-        except (requests.exceptions.ConnectionError, socket.timeout):
-            print 'Connection failed, retrying after %d seconds...' % WAIT_SECONDS
-            time.sleep(WAIT_SECONDS)
+                if not os.path.exists(download_dir):
+                    os.makedirs(download_dir)
+
+                download_photo(photo, size, force_size, download_dir)
+                break
+
+            except (requests.exceptions.ConnectionError, socket.timeout):
+                print 'Connection failed, retrying after %d seconds...' % WAIT_SECONDS
+                time.sleep(WAIT_SECONDS)
+        else:
+            print "Could not process %s! Maybe try again later." % photo.filename
+
 
     print "All photos have been downloaded!"
 
