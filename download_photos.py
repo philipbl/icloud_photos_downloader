@@ -5,7 +5,6 @@ import sys
 import socket
 import requests
 import time
-from tqdm import tqdm
 from dateutil.parser import parse
 import pyicloud
 
@@ -77,9 +76,7 @@ def download(directory, username, password, size, recent, \
     else:
         print "Downloading %d %s photos to %s/ ..." % (photos_count, size, directory)
 
-    progress_bar = tqdm(photos, total=photos_count)
-
-    for photo in progress_bar:
+    for photo in photos:
         try:
             if not download_videos \
                 and not photo.filename.lower().endswith(('.png', '.jpg', '.jpeg')):
@@ -110,7 +107,7 @@ def download(directory, username, password, size, recent, \
             break
 
         except (requests.exceptions.ConnectionError, socket.timeout):
-            tqdm.write('Connection failed, retrying after %d seconds...' % WAIT_SECONDS)
+            print 'Connection failed, retrying after %d seconds...' % WAIT_SECONDS
             time.sleep(WAIT_SECONDS)
 
     print "All photos have been downloaded!"
@@ -219,18 +216,14 @@ def download_photo(photo, size, force_size, download_dir, progress_bar):
                 break
 
             else:
-                tqdm.write(
-                    "Could not find URL to download %s for size %s!" %
-                    (photo.filename, size))
+                print "Could not find URL to download %s for size %s!" % (photo.filename, size)
 
 
         except (requests.exceptions.ConnectionError, socket.timeout):
-            tqdm.write(
-                '%s download failed, retrying after %d seconds...' %
-                (photo.filename, WAIT_SECONDS))
+            print '%s download failed, retrying after %d seconds...' % (photo.filename, WAIT_SECONDS)
             time.sleep(WAIT_SECONDS)
     else:
-        tqdm.write("Could not download %s! Maybe try again later." % photo.filename)
+        print "Could not download %s! Maybe try again later." % photo.filename
 
 
 if __name__ == '__main__':
