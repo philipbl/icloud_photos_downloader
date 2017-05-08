@@ -80,42 +80,38 @@ def download(directory, username, password, size, recent, \
     progress_bar = tqdm(photos, total=photos_count)
 
     for photo in progress_bar:
-        for _ in range(MAX_RETRIES):
+        try:
+            if not download_videos \
+                and not photo.filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+
+                progress_bar.set_description(
+                    "Skipping %s, only downloading photos." % photo.filename)
+                continue
+
+            created_date = None
             try:
-                if not download_videos \
-                    and not photo.filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+                created_date = parse(photo.created)
+            except TypeError:
+                print "Could not find created date for photo!"
+                continue
 
-                    progress_bar.set_description(
-                        "Skipping %s, only downloading photos." % photo.filename)
-                    continue
+            if start_date and created_date < start_date:
+                print "Skipping {} ({} < {})".format(photo.filename, created_date, start_date)
+                continue
+            print "Downloading {} ({})".format(photo.filename, created_date)
 
-                created_date = None
-                try:
-                    created_date = parse(photo.created)
-                except TypeError:
-                    print "Could not find created date for photo!"
-                    continue
+            date_path = '{:%Y/%m/%d}'.format(created_date)
+            download_dir = '/'.join((directory, date_path))
 
-                if start_date and created_date < start_date:
-                    print "Skipping {} ({} < {})".format(photo.filename, created_date, start_date)
-                    continue
-                print "Downloading {} ({})".format(photo.filename, created_date)
+            if not os.path.exists(download_dir):
+                os.makedirs(download_dir)
 
-                date_path = '{:%Y/%m/%d}'.format(created_date)
-                download_dir = '/'.join((directory, date_path))
+            download_photo(photo, size, force_size, download_dir, progress_bar)
+            break
 
-                if not os.path.exists(download_dir):
-                    os.makedirs(download_dir)
-
-                download_photo(photo, size, force_size, download_dir, progress_bar)
-                break
-
-            except (requests.exceptions.ConnectionError, socket.timeout):
-                tqdm.write('Connection failed, retrying after %d seconds...' % WAIT_SECONDS)
-                time.sleep(WAIT_SECONDS)
-
-        else:
-            tqdm.write("Could not process %s! Maybe try again later." % photo.filename)
+        except (requests.exceptions.ConnectionError, socket.timeout):
+            tqdm.write('Connection failed, retrying after %d seconds...' % WAIT_SECONDS)
+            time.sleep(WAIT_SECONDS)
 
     print "All photos have been downloaded!"
 
