@@ -81,8 +81,7 @@ def download(directory, username, password, size, recent, \
             if not download_videos \
                 and not photo.filename.lower().endswith(('.png', '.jpg', '.jpeg')):
 
-                progress_bar.set_description(
-                    "Skipping %s, only downloading photos." % photo.filename)
+                print "Skipping %s, only downloading photos." % photo.filename
                 continue
 
             created_date = None
@@ -103,7 +102,7 @@ def download(directory, username, password, size, recent, \
             if not os.path.exists(download_dir):
                 os.makedirs(download_dir)
 
-            download_photo(photo, size, force_size, download_dir, progress_bar)
+            download_photo(photo, size, force_size, download_dir)
             break
 
         except (requests.exceptions.ConnectionError, socket.timeout):
@@ -185,7 +184,7 @@ def truncate_middle(s, n):
     if n_2 < 1: n_2 = 1
     return '{0}...{1}'.format(s[:n_1], s[-n_2:])
 
-def download_photo(photo, size, force_size, download_dir, progress_bar):
+def download_photo(photo, size, force_size, download_dir):
     # Strip any non-ascii characters.
     filename = photo.filename
     download_path = '/'.join((download_dir, filename))
@@ -194,15 +193,15 @@ def download_photo(photo, size, force_size, download_dir, progress_bar):
     truncated_path = truncate_middle(download_path, 72)
 
     if os.path.isfile(download_path):
-        progress_bar.set_description("%s already exists." % truncated_path)
+        print "%s already exists." % truncated_path
         return
 
     # Fall back to original if requested size is not available
     if size not in photo.versions and not force_size and size != 'original':
-        download_photo(photo, 'original', True, download_dir, progress_bar)
+        download_photo(photo, 'original', True, download_dir)
         return
 
-    progress_bar.set_description("Downloading %s to %s" % (truncated_filename, truncated_path))
+    print "Downloading %s to %s" % (truncated_filename, truncated_path)
 
     for _ in range(MAX_RETRIES):
         try:
