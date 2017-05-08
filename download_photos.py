@@ -188,13 +188,9 @@ def truncate_middle(s, n):
     if n_2 < 1: n_2 = 1
     return '{0}...{1}'.format(s[:n_1], s[-n_2:])
 
-def filename_with_size(photo, size):
-    return photo.filename.encode('utf-8') \
-        .decode('ascii', 'ignore').replace('.', '-%s.' % size)
-
 def download_photo(photo, size, force_size, download_dir, progress_bar):
     # Strip any non-ascii characters.
-    filename = filename_with_size(photo, size)
+    filename = photo.filename
     download_path = '/'.join((download_dir, filename))
 
     truncated_filename = truncate_middle(filename, 24)
