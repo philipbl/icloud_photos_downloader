@@ -1,8 +1,0 @@
-docopt
-schema
-click
-python-dateutil
-requests
-tqdm==4.5.0
-git+https://github.com/ndbroadbent/pyicloud.git#egg=pyicloud
-piexif
