@@ -130,6 +130,11 @@ def backup(directory, username, password, recent,
     print("Number of photos and videos:", size)
 
     items = get_media(photos_endpoint, session, params)
+
+    if recent is not None:
+        LOGGER.info("Downloading %s recent items", recent)
+        items = itertools.islice(items, recent)
+
     items = skip_already_saved(items, directory, until_found)
     items = make_directories(items, directory)
 
