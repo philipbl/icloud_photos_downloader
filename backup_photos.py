@@ -138,6 +138,7 @@ def backup(directory, username, password, recent,
 
     items = get_media(photos_endpoint, session, params)
     items = skip_already_saved(items, directory, until_found)
+    items = make_directories(items, directory)
 
     download_queue = queue.Queue(maxsize=4)
     num_worker_threads = 4
@@ -151,7 +152,7 @@ def backup(directory, username, password, recent,
     for item in items:
         download_queue.put((item, directory, session))
 
-    # Wait for all work to be done
+    LOGGER.info("Waiting for all downloads to complete...")
     download_queue.join()
 
     # Stop workers
@@ -174,9 +175,6 @@ def download(media_item, directory, session):
     download_dir = get_download_dir(media_item.created_date, directory)
     download_path = os.path.join(download_dir, media_item.file_name)
 
-    if not os.path.exists(download_dir):
-        os.makedirs(download_dir)
-
     response = session.get(media_item.download_url, stream=True)
 
     LOGGER.info("Downloading %s", download_path)
@@ -184,6 +182,16 @@ def download(media_item, directory, session):
         for chunk in response.iter_content(chunk_size=1024):
             if chunk:
                 f.write(chunk)
+
+
+def make_directories(items, directory):
+    for item in items:
+        download_dir = get_download_dir(item.created_date, directory)
+
+        if not os.path.exists(download_dir):
+            os.makedirs(download_dir)
+
+        yield item
 
 
 def get_download_dir(created_date, directory):
