@@ -25,6 +25,7 @@ class Media(object):
     created_date = attr.ib()
     file_size = attr.ib()
     download_url = attr.ib(repr=False)
+    other_media = attr.ib(default=None)
 
     @classmethod
     def from_record(cls, record, media_size='resOriginalRes'):
@@ -137,6 +138,7 @@ def backup(directory, username, password, recent,
 
     items = skip_already_saved(items, directory, until_found)
     items = make_directories(items, directory)
+    items = get_all_downloadable_items(items)
 
     download_queue = queue.Queue(maxsize=4)
     num_worker_threads = 4
@@ -182,6 +184,13 @@ def download(media_item, directory, session):
                 f.write(chunk)
 
 
+def get_all_downloadable_items(items):
+    for item in items:
+        yield item
+        if item.other_media:
+            yield item.other_media
+
+
 def make_directories(items, directory):
     for item in items:
         download_dir = get_download_dir(item.created_date, directory)
@@ -201,11 +210,16 @@ def skip_already_saved(items, backup_location, until_found):
     consecutive_files_found = 0
 
     for item in items:
-        download_dir = get_download_dir(item.created_date, backup_location)
-        download_path = os.path.join(download_dir, item.file_name)
+        saved = already_saved(item, backup_location)
 
-        if already_saved(download_path, item.file_size):
+        if saved and item.other_media:
+            saved = already_saved(item.other_media, backup_location)
+
+        if saved:
+            download_dir = get_download_dir(item.created_date, backup_location)
+            download_path = os.path.join(download_dir, item.file_name)
             LOGGER.info("Skipping %s", download_path)
+
             consecutive_files_found += 1
 
             if until_found is not None and consecutive_files_found >= until_found:
@@ -217,7 +231,11 @@ def skip_already_saved(items, backup_location, until_found):
             yield item
 
 
-def already_saved(download_path, expected_size):
+def already_saved(item, backup_location):
+    download_dir = get_download_dir(item.created_date, backup_location)
+    download_path = os.path.join(download_dir, item.file_name)
+    expected_size = item.file_size
+
     LOGGER.debug("Looking to see if %s exists", download_path)
     if not os.path.isfile(download_path):
         return False
@@ -280,14 +298,13 @@ def get_media(endpoint, session, params, page_size=100):
 
         for record in master_records:
             media = Media.from_record(record)
-            LOGGER.info("Yielding %s", media)
-            yield media
 
             # Check for Live Photo video
             if 'resOriginalVidComplRes' in record['fields']:
-                media = Media.from_live_photo_record(record)
-                LOGGER.info("Yielding %s", media)
-                yield media
+                media.other_media = Media.from_live_photo_record(record)
+
+            LOGGER.info("Yielding %s", media)
+            yield media
 
 
 def get_num_items(endpoint, session, params):
