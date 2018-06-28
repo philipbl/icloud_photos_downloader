@@ -105,9 +105,6 @@ def backup(directory, username, password, recent,
            smtp_username, smtp_password, smtp_host, smtp_port, smtp_no_tls,
            notification_email):
 
-    if hasattr(directory, 'decode'):
-        directory = directory.decode('utf-8')
-
     directory = os.path.normpath(directory)
 
     if not notification_email:
@@ -116,16 +113,12 @@ def backup(directory, username, password, recent,
     icloud = authenticate(username, password,
         smtp_username, smtp_password, smtp_host, smtp_port, smtp_no_tls, notification_email)
 
-
+    # Set up iCloud state
     base_url = icloud.webservices['ckdatabasews']['url']
     session = icloud.session
-
-    params = icloud.params
-    params.update({
-        'remapEnums': True,
-        'getCurrentSyncToken': True
-    })
-
+    params = {**icloud.params,
+              'remapEnums': True,
+              'getCurrentSyncToken': True}
     photos_endpoint = f'{base_url}/database/1/com.apple.photos.cloud/production/private'
 
     if check_index_state(photos_endpoint, session, params) != 'FINISHED':
