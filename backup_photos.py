@@ -1,22 +1,28 @@
 import base64
 from datetime import datetime
+import functools
 import itertools
 import json
 import logging
 import os.path
 import queue
 import threading
+import time
+import socket
 import urllib.parse
 
 import attr
 import click
 import pytz
+import requests
 
 from authentication import authenticate
 
 
 logging.basicConfig(level=logging.INFO)
 LOGGER = logging.getLogger(__name__)
+MAX_RETRIES = 5
+WAIT_SECONDS = 5
 
 
 @attr.s
@@ -49,9 +55,7 @@ class Media(object):
         return obj
 
 
-
-CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
-@click.command(context_settings=CONTEXT_SETTINGS, options_metavar='<options>')
+@click.command()
 @click.argument('directory', type=click.Path(exists=True), metavar='<directory>')
 @click.option('--username',
               help='Your iCloud username or email address',
@@ -71,7 +75,7 @@ CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
               help='Scans the "Recently Deleted" folder and deletes any files found in there. ' + \
                    '(If you restore the photo in iCloud, it will be downloaded again.)',
               is_flag=True)
-@click.option('--only-print-filenames',
+@click.option('--only-print',
               help='Only prints the filenames of all files that will be downloaded. ' + \
                 '(Does not download any files.)',
               is_flag=True)
@@ -102,7 +106,7 @@ CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
               metavar='<notification_email>')
 def backup(directory, username, password, recent,
            until_found, auto_delete,
-           only_print_filenames, set_exif_datetime,
+           only_print, set_exif_datetime,
            smtp_username, smtp_password, smtp_host, smtp_port, smtp_no_tls,
            notification_email):
 
@@ -130,7 +134,8 @@ def backup(directory, username, password, recent,
     size = get_num_items(photos_endpoint, session, params)
     print("Number of photos and videos:", size)
 
-    items = get_media(photos_endpoint, session, params)
+    items = get_media(photos_endpoint, session, params,
+                      query_builder=all_media_query())
 
     if recent is not None:
         LOGGER.info("Downloading %s recent items", recent)
@@ -140,26 +145,56 @@ def backup(directory, username, password, recent,
     items = make_directories(items, directory)
     items = get_all_downloadable_items(items)
 
-    download_queue = queue.Queue(maxsize=4)
-    num_worker_threads = 4
-    threads = []
-    for i in range(num_worker_threads):
-        t = threading.Thread(target=worker, args=(download_queue,))
-        t.start()
-        threads.append(t)
+    if only_print:
+        print_items(items)
+    else:
+        download_queue = queue.Queue(maxsize=4)
+        num_worker_threads = 4
+        threads = []
+        for i in range(num_worker_threads):
+            t = threading.Thread(target=worker, args=(download_queue,))
+            t.start()
+            threads.append(t)
 
-    # Download files
+        # Download files
+        for item in items:
+            download_queue.put((item, directory, session))
+
+        LOGGER.info("Waiting for all downloads to complete...")
+        download_queue.join()
+
+        # Stop workers
+        for _ in range(num_worker_threads):
+            download_queue.put(None)
+        for t in threads:
+            t.join()
+
+        LOGGER.info("...Done downloading")
+
+    if auto_delete:
+        LOGGER.info("Deleting any files found in 'Recently Deleted'...")
+        items = get_media(photos_endpoint, session, params,
+                          query_builder=recently_deleted_query())
+
+        if only_print:
+            print_items(items)
+        else:
+            delete_files(items, directory)
+
+
+def print_items(items):
     for item in items:
-        download_queue.put((item, directory, session))
+        LOGGER.info("%s", item.file_name)
 
-    LOGGER.info("Waiting for all downloads to complete...")
-    download_queue.join()
 
-    # Stop workers
-    for _ in range(num_worker_threads):
-        download_queue.put(None)
-    for t in threads:
-        t.join()
+def delete_files(items, directory):
+    for media_item in items:
+        download_dir = get_download_dir(media_item.created_date, directory)
+        path = os.path.join(download_dir, media_item.file_name)
+
+        if os.path.exists(path):
+            LOGGER.info("Deleting %s!", path)
+            os.remove(path)
 
 
 def worker(download_queue):
@@ -175,13 +210,22 @@ def download(media_item, directory, session):
     download_dir = get_download_dir(media_item.created_date, directory)
     download_path = os.path.join(download_dir, media_item.file_name)
 
-    response = session.get(media_item.download_url, stream=True)
+    for _ in range(MAX_RETRIES):
+        try:
+            response = session.get(media_item.download_url, stream=True)
 
-    LOGGER.info("Downloading %s", download_path)
-    with open(download_path, 'wb') as f:
-        for chunk in response.iter_content(chunk_size=1024):
-            if chunk:
-                f.write(chunk)
+            LOGGER.info("Downloading %s", download_path)
+            with open(download_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=1024):
+                    if chunk:
+                        f.write(chunk)
+            return
+
+        except (requests.exceptions.ConnectionError, socket.timeout):
+            LOGGER.warning('Connection failed, retrying after %d seconds...', WAIT_SECONDS)
+            time.sleep(WAIT_SECONDS)
+    else:
+        LOGGER.error("Could not download %s!", download_path)
 
 
 def get_all_downloadable_items(items):
@@ -256,31 +300,46 @@ def already_saved(item, backup_location):
         return False
 
 
-def get_media(endpoint, session, params, page_size=100):
-    url = f'{endpoint}/records/query?{urllib.parse.urlencode(params)}'
+def all_media_query():
+    return functools.partial(build_query,
+                             list_type='CPLAssetAndMasterByAddedDate',
+                             direction='ASCENDING')
 
-    offset = 0
-    direction = 'ASCENDING'  # Also can be DESCENDING
+
+def recently_deleted_query():
+    return functools.partial(build_query,
+                             list_type='CPLAssetAndMasterDeletedByExpungedDate',
+                             direction='ASCENDING')
+
+
+def build_query(list_type, direction, offset, page_size=100):
     page_size = page_size * 2
 
+    return {
+        'query': {
+            'filterBy': [
+                {'fieldName': 'startRank', 'fieldValue':
+                    {'type': 'INT64', 'value': offset},
+                    'comparator': 'EQUALS'},
+                {'fieldName': 'direction', 'fieldValue':
+                    {'type': 'STRING', 'value': direction},
+                    'comparator': 'EQUALS'}
+            ],
+            'recordType': list_type
+        },
+        'resultsLimit': page_size,
+        'desiredKeys': ['resOriginalRes', 'resOriginalVidComplRes', 'filenameEnc',
+                        'masterRef'],
+        'zoneID': {'zoneName': 'PrimarySync'}
+    }
+
+
+def get_media(endpoint, session, params, query_builder):
+    url = f'{endpoint}/records/query?{urllib.parse.urlencode(params)}'
+    offset = 0
+
     while True:
-        query = {
-            'query': {
-                'filterBy': [
-                    {'fieldName': 'startRank', 'fieldValue':
-                        {'type': 'INT64', 'value': offset},
-                        'comparator': 'EQUALS'},
-                    {'fieldName': 'direction', 'fieldValue':
-                        {'type': 'STRING', 'value': direction},
-                        'comparator': 'EQUALS'}
-                ],
-                'recordType': 'CPLAssetAndMasterByAddedDate'
-            },
-            'resultsLimit': page_size,
-            'desiredKeys': ['resOriginalRes', 'resOriginalVidComplRes', 'filenameEnc',
-                            'masterRef'],
-            'zoneID': {'zoneName': 'PrimarySync'}
-        }
+        query = query_builder(offset=offset)
 
         request = session.post(url,
                                data=json.dumps(query),
@@ -288,10 +347,10 @@ def get_media(endpoint, session, params, page_size=100):
         response = request.json()
         records = response['records']
         master_records = [record for record in records if record['recordType'] == 'CPLMaster']
-        LOGGER.info("Received %s master records", len(master_records))
+        LOGGER.debug("Received %s master records", len(master_records))
 
         if len(master_records) == 0:
-            LOGGER.info("No more master records. Stopping!")
+            LOGGER.debug("No more master records. Stopping!")
             break
 
         offset += len(master_records)
@@ -303,7 +362,7 @@ def get_media(endpoint, session, params, page_size=100):
             if 'resOriginalVidComplRes' in record['fields']:
                 media.other_media = Media.from_live_photo_record(record)
 
-            LOGGER.info("Yielding %s", media)
+            LOGGER.debug("Yielding %s", media)
             yield media
 
 
