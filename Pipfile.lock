@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "107ce3899c106a7430cf03e3c3d37ffd79c0a34586c4e6372bdaa7278d771146"
+            "sha256": "7dce25c05cb37f1218a1645a6d5cd65715cec44e387c4ad604728bf12a65bae9"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -24,6 +24,10 @@
             "index": "pypi",
             "version": "==18.1.0"
         },
+        "boto3-wasabi": {
+            "git": "https://github.com/KalobMTaulien/boto3_wasabi",
+            "ref": "8fdb9fea31c76e04580ac108edca1a923e2312bd"
+        },
         "click": {
             "hashes": [
                 "sha256:29f99fc6125fbc931b758dc053b3114e55c77a6e4c6c3a2674a2dc986016381d",
@@ -32,17 +36,25 @@
             "index": "pypi",
             "version": "==6.7"
         },
+        "piexif": {
+            "hashes": [
+                "sha256:1d3dde03bd6298393645bc11d585b67a6ea98fd7e9e1aded6d5d6ec3e4cfbdda",
+                "sha256:47befcbc9a6ee171a0b8c35b981eb02df2120427eb19418d257450b055c622ac"
+            ],
+            "index": "pypi",
+            "version": "==1.0.13"
+        },
         "pyicloud": {
             "git": "https://github.com/ndbroadbent/pyicloud.git",
             "ref": "d57fed4f27c58bfe67c5d19d976dbe244ea4ac87"
         },
         "pytz": {
             "hashes": [
-                "sha256:65ae0c8101309c45772196b21b74c46b2e5d11b6275c45d251b150d5da334555",
-                "sha256:c06425302f2cf668f1bba7a0a03f3c1d34d4ebeef2c72003da308b3947c7f749"
+                "sha256:a061aa0a9e06881eb8b3b2b43f05b9439d6583c206d0a6c340ff72a7b6669053",
+                "sha256:ffb9ef1de172603304d9d2819af6f5ece76f2e85ec10692a524dd876e72bf277"
             ],
             "index": "pypi",
-            "version": "==2018.4"
+            "version": "==2018.5"
         }
     },
     "develop": {}
