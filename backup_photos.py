@@ -6,12 +6,15 @@ import json
 import logging
 import os.path
 import queue
+import tempfile
 import threading
 import time
 import socket
 import urllib.parse
 
 import attr
+import boto3_wasabi
+from botocore.errorfactory import ClientError
 import click
 import pytz
 import requests
@@ -25,11 +28,19 @@ MAX_RETRIES = 5
 WAIT_SECONDS = 5
 
 
+# s3 = boto3_wasabi.client('s3', aws_access_key_id=WASABI_ACCESS_KEY, aws_secret_access_key=WASABI_SECRET_KEY)
+# s3_client = functools.partial(s3.put_object,
+#                               Bucket=WASABI_BUCKET,
+#                               ContentType='application/octet-stream')
+s3_client = None
+
+
 @attr.s
 class Media(object):
     file_name = attr.ib()
     created_date = attr.ib()
     file_size = attr.ib()
+    record = attr.ib()
     download_url = attr.ib(repr=False)
     other_media = attr.ib(default=None)
 
@@ -45,7 +56,7 @@ class Media(object):
 
         download_url = record['fields'][media_size]['value']['downloadURL']
 
-        return cls(file_name, created_date, file_size, download_url)
+        return cls(file_name, created_date, file_size, record, download_url)
 
     @classmethod
     def from_live_photo_record(cls, record):
@@ -56,7 +67,7 @@ class Media(object):
 
 
 @click.command()
-@click.argument('directory', type=click.Path(exists=True), metavar='<directory>')
+@click.argument('directory', metavar='<directory>')
 @click.option('--username',
               help='Your iCloud username or email address',
               metavar='<username>',
@@ -214,12 +225,33 @@ def download(media_item, directory, session):
         try:
             response = session.get(media_item.download_url, stream=True)
 
-            LOGGER.info("Downloading %s", download_path)
-            with open(download_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=1024):
-                    if chunk:
-                        f.write(chunk)
-            return
+            if s3_client:
+                if int(response.headers['Content-Length']) > (1024 * 1024 * 50):
+                    # Save big files to a temporary file so I don't eat up memory
+                    with tempfile.TemporaryFile() as f:
+                        LOGGER.info("Saving %s to a temporary file", download_path)
+                        for chunk in response.iter_content(chunk_size=1024 * 1024):
+                            if chunk:
+                                f.write(chunk)
+                        f.seek(0)  # Start at the beginning of the file
+                        LOGGER.info("Uploading %s to S3", download_path)
+                        s3_client(Key=download_path,
+                                  Body=f)
+                else:
+                    # Small files I can read into memory
+                    LOGGER.info("Uploading %s to S3", download_path)
+                    s3_client(Key=download_path,
+                              Body=response.content)
+
+                return
+
+            else:
+                LOGGER.info("Downloading %s", download_path)
+                with open(download_path, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=1024):
+                        if chunk:
+                            f.write(chunk)
+                return
 
         except (requests.exceptions.ConnectionError, socket.timeout):
             LOGGER.warning('Connection failed, retrying after %d seconds...', WAIT_SECONDS)
@@ -280,24 +312,39 @@ def already_saved(item, backup_location):
     download_path = os.path.join(download_dir, item.file_name)
     expected_size = item.file_size
 
-    LOGGER.debug("Looking to see if %s exists", download_path)
-    if not os.path.isfile(download_path):
-        return False
-
-    try:
-        actual_size = os.path.getsize(download_path)
-        LOGGER.debug("Checking file size: %s ≟ %s", actual_size, expected_size)
-        if actual_size != expected_size:
-            LOGGER.warning("Re-downloading %s because sizes were different: %s & %s",
-                           download_path,
-                           actual_size,
-                           expected_size)
+    if s3_client:
+        try:
+            response = s3.head_object(Bucket=WASABI_BUCKET, Key=download_path)
+            actual_size = response['ContentLength']
+            if actual_size != expected_size:
+                LOGGER.warning("Re-downloading %s because sizes were different: %s & %s",
+                               download_path,
+                               actual_size,
+                               expected_size)
+                return False
+            else:
+                return True
+        except ClientError as e:
             return False
-        else:
-            return True
-    except OSError:
-        LOGGER.exception("An error occurred while getting size of file")
-        return False
+    else:
+        LOGGER.debug("Looking to see if %s exists", download_path)
+        if not os.path.isfile(download_path):
+            return False
+
+        try:
+            actual_size = os.path.getsize(download_path)
+            LOGGER.debug("Checking file size: %s ≟ %s", actual_size, expected_size)
+            if actual_size != expected_size:
+                LOGGER.warning("Re-downloading %s because sizes were different: %s & %s",
+                               download_path,
+                               actual_size,
+                               expected_size)
+                return False
+            else:
+                return True
+        except OSError:
+            LOGGER.exception("An error occurred while getting size of file")
+            return False
 
 
 def all_media_query():
