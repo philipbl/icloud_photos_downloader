@@ -17,6 +17,7 @@ import pytz
 import requests
 
 from authentication import authenticate
+from backends import filesystem
 
 
 logging.basicConfig(level=logging.INFO)
@@ -141,8 +142,8 @@ def backup(directory, username, password, recent,
         LOGGER.info("Downloading %s recent items", recent)
         items = itertools.islice(items, recent)
 
-    items = skip_already_saved(items, directory, until_found)
-    items = make_directories(items, directory)
+    items = skip_already_saved(backend, items, directory, until_found)
+    items = make_directories(backend, items, directory)
     items = get_all_downloadable_items(items)
 
     if only_print:
@@ -189,13 +190,12 @@ def print_items(items):
 
 def delete_files(items, directory):
     for media_item in items:
+        # TODO: Do I need to delete the live photo video?
         download_dir = get_download_dir(media_item.created_date, directory)
         path = os.path.join(download_dir, media_item.file_name)
-
-        if os.path.exists(path):
-            LOGGER.info("Deleting %s!", path)
-            os.remove(path)
-
+        
+        backend.delete_file(path)
+        
 
 def worker(download_queue):
     while True:
@@ -213,14 +213,9 @@ def download(media_item, directory, session):
     for _ in range(MAX_RETRIES):
         try:
             response = session.get(media_item.download_url, stream=True)
-
-            LOGGER.info("Downloading %s", download_path)
-            with open(download_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=1024):
-                    if chunk:
-                        f.write(chunk)
+            backend.save_file(download_path, response)
             return
-
+            
         except (requests.exceptions.ConnectionError, socket.timeout):
             LOGGER.warning('Connection failed, retrying after %d seconds...', WAIT_SECONDS)
             time.sleep(WAIT_SECONDS)
@@ -235,13 +230,10 @@ def get_all_downloadable_items(items):
             yield item.other_media
 
 
-def make_directories(items, directory):
+def make_directories(backend, items, directory):
     for item in items:
-        download_dir = get_download_dir(item.created_date, directory)
-
-        if not os.path.exists(download_dir):
-            os.makedirs(download_dir)
-
+        download_dir = get_download_dir(item.created_date, directory)        
+        backend.make_directory(download_dir)
         yield item
 
 
@@ -250,14 +242,14 @@ def get_download_dir(created_date, directory):
     return os.path.join(directory, date_path)
 
 
-def skip_already_saved(items, backup_location, until_found):
+def skip_already_saved(backend, items, backup_location, until_found):
     consecutive_files_found = 0
 
     for item in items:
-        saved = already_saved(item, backup_location)
+        saved = backend.already_saved(item, backup_location)
 
         if saved and item.other_media:
-            saved = already_saved(item.other_media, backup_location)
+            saved = backend.already_saved(item.other_media, backup_location)
 
         if saved:
             download_dir = get_download_dir(item.created_date, backup_location)
@@ -273,32 +265,6 @@ def skip_already_saved(items, backup_location, until_found):
         else:
             consecutive_files_found = 0
             yield item
-
-
-def already_saved(item, backup_location):
-    download_dir = get_download_dir(item.created_date, backup_location)
-    download_path = os.path.join(download_dir, item.file_name)
-    expected_size = item.file_size
-
-    LOGGER.debug("Looking to see if %s exists", download_path)
-    if not os.path.isfile(download_path):
-        return False
-
-    try:
-        actual_size = os.path.getsize(download_path)
-        LOGGER.debug("Checking file size: %s ≟ %s", actual_size, expected_size)
-        if actual_size != expected_size:
-            LOGGER.warning("Re-downloading %s because sizes were different: %s & %s",
-                           download_path,
-                           actual_size,
-                           expected_size)
-            return False
-        else:
-            return True
-    except OSError:
-        LOGGER.exception("An error occurred while getting size of file")
-        return False
-
 
 def all_media_query():
     return functools.partial(build_query,

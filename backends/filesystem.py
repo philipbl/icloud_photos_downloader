@@ -28,14 +28,14 @@ class FileSystem():
             os.makedirs(directory)
 
         
-    def save(self, path, data):
+    def save_file(self, path, data):
         LOGGER.info("Downloading %s", download_path)
         with open(path, 'wb') as f:
             for chunk in data.iter_content(chunk_size=1024):
                 if chunk:
                     f.write(chunk)
         
-    def delete(self, path):
+    def delete_file(self, path):
         if os.path.exists(path):
             LOGGER.info("Deleting %s!", path)
             os.remove(path)
