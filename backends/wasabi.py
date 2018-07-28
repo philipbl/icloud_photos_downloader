@@ -12,7 +12,7 @@ class AwsS3():
                                           aws_access_key_id=access_key, 
                                           aws_secret_access_key=secret_key)
 
-    def already_saved(self, path, expected_size):
+    def already_saved(self, expected_size):
         try:
             response = self.client.head_object(Bucket=WASABI_BUCKET, Key=download_path)
             actual_size = response['ContentLength']
@@ -27,7 +27,7 @@ class AwsS3():
         except ClientError as e:
             return False
         
-    def save_file(self, path, data):
+    def save_file(self, data):
         if int(data.headers['Content-Length']) > (1024 * 1024 * 50):
             # Save big files to a temporary file so I don't eat up memory
             with tempfile.TemporaryFile() as f:
@@ -44,8 +44,8 @@ class AwsS3():
             LOGGER.info("Uploading %s to S3", download_path)
             s3_client(Key=download_path,
                       Body=response.content)
-
+                      
         return
         
-    def delete_file(self, path):
+    def delete_file(self, item):
         pass

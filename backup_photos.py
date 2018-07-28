@@ -142,7 +142,7 @@ def backup(directory, username, password, recent,
         LOGGER.info("Downloading %s recent items", recent)
         items = itertools.islice(items, recent)
 
-    items = skip_already_saved(backend, items, directory, until_found)
+    items = skip_already_saved(backend, items, until_found)
     items = get_all_downloadable_items(items)
 
     if only_print:
@@ -158,7 +158,7 @@ def backup(directory, username, password, recent,
 
         # Download files
         for item in items:
-            download_queue.put((item, directory, session))
+            download_queue.put((item, session))
 
         LOGGER.info("Waiting for all downloads to complete...")
         download_queue.join()
@@ -179,7 +179,7 @@ def backup(directory, username, password, recent,
         if only_print:
             print_items(items)
         else:
-            delete_files(items, directory)
+            delete_files(items)
 
 
 def print_items(items):
@@ -187,13 +187,12 @@ def print_items(items):
         LOGGER.info("%s", item.file_name)
 
 
-def delete_files(items, directory):
-    for media_item in items:
-        # TODO: Do I need to delete the live photo video?
-        download_dir = get_download_dir(media_item.created_date, directory)
-        path = os.path.join(download_dir, media_item.file_name)
+def delete_files(items):
+    for item in items:
+        backend.delete_file(item)
         
-        backend.delete_file(path)
+        if item.other_media:
+            backend.delete_file(item.other_media)
         
 
 def worker(download_queue):
@@ -205,14 +204,11 @@ def worker(download_queue):
         download_queue.task_done()
 
 
-def download(media_item, directory, session):
-    download_dir = get_download_dir(media_item.created_date, directory)
-    download_path = os.path.join(download_dir, media_item.file_name)
-
+def download(media_item, session):
     for _ in range(MAX_RETRIES):
         try:
             response = session.get(media_item.download_url, stream=True)
-            backend.save_file(download_path, response)
+            backend.save_file(response)
             return
             
         except (requests.exceptions.ConnectionError, socket.timeout):
@@ -233,20 +229,17 @@ def get_download_dir(created_date, directory):
     return os.path.join(directory, date_path)
 
 
-def skip_already_saved(backend, items, backup_location, until_found):
+def skip_already_saved(backend, items, until_found):
     consecutive_files_found = 0
 
     for item in items:
-        saved = backend.already_saved(item, backup_location)
+        saved = backend.already_saved(item)
 
         if saved and item.other_media:
-            saved = backend.already_saved(item.other_media, backup_location)
+            saved = backend.already_saved(item.other_media)
 
         if saved:
-            download_dir = get_download_dir(item.created_date, backup_location)
-            download_path = os.path.join(download_dir, item.file_name)
-            LOGGER.info("Skipping %s", download_path)
-
+            LOGGER.info("Skipping %s", item)
             consecutive_files_found += 1
 
             if until_found is not None and consecutive_files_found >= until_found:

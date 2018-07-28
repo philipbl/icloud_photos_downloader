@@ -3,10 +3,10 @@ import os
 
 
 class FileSystem():
-    def __init__(self):
-        pass
+    def __init__(self, directory):
+        self.directory = directory
         
-    def already_saved(self, path, expected_size):
+    def already_saved(self, expected_size):
         LOGGER.debug("Looking to see if %s exists", path)
         if not os.path.isfile(path):
             return False
@@ -27,7 +27,7 @@ class FileSystem():
             return False
 
     # Must be thread safe    
-    def save_file(self, path, data):
+    def save_file(self, data):
         # TODO: Get directory
         if not os.path.exists(directory):
             try:
@@ -44,7 +44,7 @@ class FileSystem():
                 if chunk:
                     f.write(chunk)
         
-    def delete_file(self, path):
+    def delete_file(self, item):
         if os.path.exists(path):
             LOGGER.info("Deleting %s!", path)
             os.remove(path)
