@@ -143,7 +143,6 @@ def backup(directory, username, password, recent,
         items = itertools.islice(items, recent)
 
     items = skip_already_saved(backend, items, directory, until_found)
-    items = make_directories(backend, items, directory)
     items = get_all_downloadable_items(items)
 
     if only_print:
@@ -228,14 +227,6 @@ def get_all_downloadable_items(items):
         yield item
         if item.other_media:
             yield item.other_media
-
-
-def make_directories(backend, items, directory):
-    for item in items:
-        download_dir = get_download_dir(item.created_date, directory)        
-        backend.make_directory(download_dir)
-        yield item
-
 
 def get_download_dir(created_date, directory):
     date_path = "{:%Y/%m/%d}".format(created_date)

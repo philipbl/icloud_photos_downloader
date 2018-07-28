@@ -3,6 +3,9 @@ import os
 
 
 class FileSystem():
+    def __init__(self):
+        pass
+        
     def already_saved(self, path, expected_size):
         LOGGER.debug("Looking to see if %s exists", path)
         if not os.path.isfile(path):
@@ -22,13 +25,19 @@ class FileSystem():
         except OSError:
             LOGGER.exception("An error occurred while getting size of file")
             return False
-        
-    def make_directory(self, directory):
-        if not os.path.exists(directory):
-            os.makedirs(directory)
 
-        
+    # Must be thread safe    
     def save_file(self, path, data):
+        # TODO: Get directory
+        if not os.path.exists(directory):
+            try:
+                os.makedirs(directory)
+            except:
+                # TODO: Find correct exception
+                # Necessary in case a different thread created it between the 
+                # check and creation
+                pass
+            
         LOGGER.info("Downloading %s", download_path)
         with open(path, 'wb') as f:
             for chunk in data.iter_content(chunk_size=1024):
