@@ -17,7 +17,7 @@ import pytz
 import requests
 
 from authentication import authenticate
-from backends import filesystem
+from backends import filesystem, wasabi
 
 
 logging.basicConfig(level=logging.INFO)

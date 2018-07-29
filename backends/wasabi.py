@@ -1,6 +1,6 @@
 import logging
 
-import boto3_wasabi
+import boto3
 
 # s3_client = functools.partial(s3.put_object,
 #                               Bucket=WASABI_BUCKET,
@@ -8,9 +8,10 @@ import boto3_wasabi
 
 class AwsS3():
     def __init__(self, access_key, secret_key, bucket_name):
-        self.client = boto3_wasabi.client('s3', 
-                                          aws_access_key_id=access_key, 
-                                          aws_secret_access_key=secret_key)
+        self.client = boto3.client('s3', 
+                                   endpoint_url='https://s3.wasabisys.com',
+                                   aws_access_key_id=access_key, 
+                                   aws_secret_access_key=secret_key)
 
     def already_saved(self, expected_size):
         try:

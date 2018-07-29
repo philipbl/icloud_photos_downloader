@@ -8,6 +8,7 @@ attrs = "*"
 click = "*"
 pyicloud = {git = "https://github.com/ndbroadbent/pyicloud.git"}
 pytz = "*"
+boto3 = "*"
 
 [dev-packages]
 
