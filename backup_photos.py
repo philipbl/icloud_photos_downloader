@@ -17,8 +17,6 @@ import pytz
 import requests
 
 from authentication import authenticate
-from backends import filesystem
-from backends import wasabi as wasabi_backend
 
 
 logging.basicConfig(level=logging.INFO)
@@ -102,19 +100,19 @@ class Media(object):
               help='Email address where you would like to receive email notifications. Default: SMTP username',
               metavar='<notification_email>')
 @click.pass_context
-def cli(ctx, username, password, smtp_username, smtp_password, smtp_host, 
+def cli(ctx, username, password, smtp_username, smtp_password, smtp_host,
         smtp_port, smtp_no_tls, notification_email, **kwargs):
 
     if not notification_email:
         notification_email = smtp_username
 
-    icloud = authenticate(username, 
+    icloud = authenticate(username,
                           password,
-                          smtp_username, 
-                          smtp_password, 
-                          smtp_host, 
-                          smtp_port, 
-                          smtp_no_tls, 
+                          smtp_username,
+                          smtp_password,
+                          smtp_host,
+                          smtp_port,
+                          smtp_no_tls,
                           notification_email)
 
     # Set up iCloud state
@@ -129,7 +127,7 @@ def cli(ctx, username, password, smtp_username, smtp_password, smtp_host,
         return session.post(f'{photos_endpoint}/{url}',
                             params=params,
                             **kwargs)
-        
+
 
     if check_index_state(post) != 'finished':
         print('iCloud Photo Library not finished indexing. Please try '
@@ -148,6 +146,8 @@ def cli(ctx, username, password, smtp_username, smtp_password, smtp_host,
 @click.argument('bucket_name', metavar='<name>')
 @click.pass_context
 def wasabi(ctx, access_key, secret_key, bucket_name):
+    from backends import wasabi as wasabi_backend
+
     backend = wasabi_backend.AwsS3(access_key, secret_key, bucket_name)
     backup(backend, **ctx.obj)
 
@@ -156,6 +156,8 @@ def wasabi(ctx, access_key, secret_key, bucket_name):
 @click.argument('directory', type=click.Path(exists=True), metavar='<directory>')
 @click.pass_context
 def file(ctx, directory):
+    from backends import filesystem
+
     directory = os.path.normpath(directory)
     backend = filesystem.FileSystem(directory)
     backup(backend, **ctx.obj)
@@ -187,7 +189,7 @@ def backup(backend, post, session, recent, until_found, only_print, auto_delete)
 
         # Download files
         for item in items:
-            download_queue.put((item, session))
+            download_queue.put((item, backend, session))
 
         LOGGER.info("Waiting for all downloads to complete...")
         download_queue.join()
@@ -218,10 +220,10 @@ def print_items(items):
 def delete_files(items):
     for item in items:
         backend.delete_file(item)
-        
+
         if item.other_media:
             backend.delete_file(item.other_media)
-        
+
 
 def worker(download_queue):
     while True:
@@ -232,13 +234,13 @@ def worker(download_queue):
         download_queue.task_done()
 
 
-def download(media_item, session):
+def download(media_item, backend, session):
     for _ in range(MAX_RETRIES):
         try:
             response = session.get(media_item.download_url, stream=True)
             backend.save_file(media_item, response)
             return
-            
+
         except (requests.exceptions.ConnectionError, socket.timeout):
             LOGGER.warning('Connection failed, retrying after %d seconds...', WAIT_SECONDS)
             time.sleep(WAIT_SECONDS)
@@ -385,9 +387,9 @@ def check_index_state(post):
                    headers={'Content-type': 'text/plain'})
     response = request.json()
     indexing_state = response['records'][0]['fields']['state']['value']
-    return indexing_state
+    return indexing_state.lower()
 
 
 
 if __name__ == '__main__':
-    cli(obj={}) 
+    cli(obj={})
