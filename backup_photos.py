@@ -17,7 +17,8 @@ import pytz
 import requests
 
 from authentication import authenticate
-from backends import filesystem, wasabi
+from backends import filesystem
+from backends import wasabi as wasabi_backend
 
 
 logging.basicConfig(level=logging.INFO)
@@ -55,9 +56,7 @@ class Media(object):
 
         return obj
 
-
-@click.command()
-@click.argument('directory', type=click.Path(exists=True), metavar='<directory>')
+@click.group()
 @click.option('--username',
               help='Your iCloud username or email address',
               metavar='<username>',
@@ -79,9 +78,6 @@ class Media(object):
 @click.option('--only-print',
               help='Only prints the filenames of all files that will be downloaded. ' + \
                 '(Does not download any files.)',
-              is_flag=True)
-@click.option('--set-exif-datetime',
-              help='Writing exif DateTimeOriginal tag from file creation date, if it\'s not exists. ',
               is_flag=True)
 @click.option('--smtp-username',
               help='Your SMTP username, for sending email notifications when two-step authentication expires.',
@@ -105,19 +101,22 @@ class Media(object):
 @click.option('--notification-email',
               help='Email address where you would like to receive email notifications. Default: SMTP username',
               metavar='<notification_email>')
-def backup(directory, username, password, recent,
-           until_found, auto_delete,
-           only_print, set_exif_datetime,
-           smtp_username, smtp_password, smtp_host, smtp_port, smtp_no_tls,
-           notification_email):
-
-    directory = os.path.normpath(directory)
+@click.pass_context
+def cli(ctx, username, password, smtp_username, smtp_password, smtp_host, 
+        smtp_port, smtp_no_tls, notification_email, **kwargs):
 
     if not notification_email:
         notification_email = smtp_username
 
-    icloud = authenticate(username, password,
-        smtp_username, smtp_password, smtp_host, smtp_port, smtp_no_tls, notification_email)
+    icloud = authenticate(username, 
+                          password,
+                          smtp_username, 
+                          smtp_password, 
+                          smtp_host, 
+                          smtp_port, 
+                          smtp_no_tls, 
+                          notification_email)
+
 
     # Set up iCloud state
     base_url = icloud.webservices['ckdatabasews']['url']
@@ -127,10 +126,40 @@ def backup(directory, username, password, recent,
               'getCurrentSyncToken': True}
     photos_endpoint = f'{base_url}/database/1/com.apple.photos.cloud/production/private'
 
-    if check_index_state(photos_endpoint, session, params) != 'FINISHED':
+    if check_index_state(photos_endpoint, session, params) != 'finished':
         print('iCloud Photo Library not finished indexing. Please try '
               'again in a few minutes')
         exit()
+
+    # Pass information to other commands
+    ctx.obj = kwargs
+    ctx.obj['session'] = session
+    ctx.obj['params'] = params
+    ctx.obj['photos_endpoint'] = photos_endpoint
+
+
+@cli.command()
+@click.argument('access_key', metavar='<key>')
+@click.argument('secret_key', metavar='<key>')
+@click.argument('bucket_name', metavar='<name>')
+@click.pass_context
+def wasabi(ctx, access_key, secret_key, bucket_name):
+    backend = wasabi_backend.AwsS3(access_key, secret_key, bucket_name)
+    backup(backend, **ctx.obj)
+
+
+@cli.command()
+@click.argument('directory', type=click.Path(exists=True), metavar='<directory>')
+@click.pass_context
+def file(ctx, directory):
+    directory = os.path.normpath(directory)
+    backend = filesystem.FileSystem(directory)
+    backup(backend, **ctx.obj)
+
+
+def backup(backend, **kwargs):
+    print(backend)
+    print(kwargs)
 
     size = get_num_items(photos_endpoint, session, params)
     print("Number of photos and videos:", size)
@@ -361,6 +390,5 @@ def check_index_state(endpoint, session, params):
 
 
 
-
 if __name__ == '__main__':
-    backup()
+    cli(obj={}) 
