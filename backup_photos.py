@@ -117,7 +117,6 @@ def cli(ctx, username, password, smtp_username, smtp_password, smtp_host,
                           smtp_no_tls, 
                           notification_email)
 
-
     # Set up iCloud state
     base_url = icloud.webservices['ckdatabasews']['url']
     session = icloud.session
@@ -126,7 +125,12 @@ def cli(ctx, username, password, smtp_username, smtp_password, smtp_host,
               'getCurrentSyncToken': True}
     photos_endpoint = f'{base_url}/database/1/com.apple.photos.cloud/production/private'
 
-    if check_index_state(photos_endpoint, session, params) != 'finished':
+    def post(url, **kwargs):
+        request = session.post(f'{endpoint}/{url}',
+                               params=params,
+                               **kwargs)
+
+    if check_index_state(post) != 'finished':
         print('iCloud Photo Library not finished indexing. Please try '
               'again in a few minutes')
         exit()
@@ -134,8 +138,7 @@ def cli(ctx, username, password, smtp_username, smtp_password, smtp_host,
     # Pass information to other commands
     ctx.obj = kwargs
     ctx.obj['session'] = session
-    ctx.obj['params'] = params
-    ctx.obj['photos_endpoint'] = photos_endpoint
+    ctx.obj['post'] = post
 
 
 @cli.command()
@@ -157,15 +160,11 @@ def file(ctx, directory):
     backup(backend, **ctx.obj)
 
 
-def backup(backend, **kwargs):
-    print(backend)
-    print(kwargs)
+def backup(backend, post, session, recent, until_found, only_print, auto_delete):
+    # size = get_num_items(photos_endpoint, session, params)
+    # print("Number of photos and videos:", size)
 
-    size = get_num_items(photos_endpoint, session, params)
-    print("Number of photos and videos:", size)
-
-    items = get_media(photos_endpoint, session, params,
-                      query_builder=all_media_query())
+    items = get_media(post, query_builder=all_media_query())
 
     if recent is not None:
         LOGGER.info("Downloading %s recent items", recent)
@@ -202,8 +201,7 @@ def backup(backend, **kwargs):
 
     if auto_delete:
         LOGGER.info("Deleting any files found in 'Recently Deleted'...")
-        items = get_media(photos_endpoint, session, params,
-                          query_builder=recently_deleted_query())
+        items = get_media(post, query_builder=recently_deleted_query())
 
         if only_print:
             print_items(items)
@@ -313,16 +311,16 @@ def build_query(list_type, direction, offset, page_size=100):
     }
 
 
-def get_media(endpoint, session, params, query_builder):
-    url = f'{endpoint}/records/query?{urllib.parse.urlencode(params)}'
+def get_media(post, query_builder):
+    url = 'records/query'
     offset = 0
 
     while True:
         query = query_builder(offset=offset)
 
-        request = session.post(url,
-                               data=json.dumps(query),
-                               headers={'Content-type': 'text/plain'})
+        request = post(url,
+                       data=json.dumps(query),
+                       headers={'Content-type': 'text/plain'})
         response = request.json()
         records = response['records']
         master_records = [record for record in records if record['recordType'] == 'CPLMaster']
@@ -345,8 +343,8 @@ def get_media(endpoint, session, params, query_builder):
             yield media
 
 
-def get_num_items(endpoint, session, params):
-    url = f'{endpoint}/internal/records/query/batch?{urllib.parse.urlencode(params)}'
+def get_num_items(post):
+    url = 'internal/records/query/batch'
     query = {
         'batch': [{
             'resultsLimit': 1,
@@ -367,9 +365,9 @@ def get_num_items(endpoint, session, params):
             }
         }]
     }
-    request = session.post(url,
-                           data=json.dumps(query),
-                           headers={'Content-type': 'text/plain'})
+    request = post(url,
+                   data=json.dumps(query),
+                   headers={'Content-type': 'text/plain'})
     response = request.json()
     length = (response["batch"][0]["records"][0]["fields"]
                  ["itemCount"]["value"])
@@ -377,13 +375,13 @@ def get_num_items(endpoint, session, params):
     return length
 
 
-def check_index_state(endpoint, session, params):
-    url = f'{endpoint}/records/query?{urllib.parse.urlencode(params)}'
+def check_index_state(post):
+    url = 'records/query'
     json_data = ('{"query":{"recordType":"CheckIndexingState"},'
                  '"zoneID":{"zoneName":"PrimarySync"}}')
-    request = session.post(url,
-                           data=json_data,
-                           headers={'Content-type': 'text/plain'})
+    request = post(url,
+                   data=json_data,
+                   headers={'Content-type': 'text/plain'})
     response = request.json()
     indexing_state = response['records'][0]['fields']['state']['value']
     return indexing_state
