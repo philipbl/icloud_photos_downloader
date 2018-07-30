@@ -235,7 +235,7 @@ def download(media_item, session):
     for _ in range(MAX_RETRIES):
         try:
             response = session.get(media_item.download_url, stream=True)
-            backend.save_file(response)
+            backend.save_file(media_item, response)
             return
             
         except (requests.exceptions.ConnectionError, socket.timeout):
