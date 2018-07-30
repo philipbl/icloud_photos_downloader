@@ -14,7 +14,12 @@ def authenticate(username, password, \
     except pyicloud.exceptions.NoStoredPasswordAvailable:
       # Prompt for password if not stored in PyiCloud's keyring
       password = getpass.getpass()
-      icloud = pyicloud.PyiCloudService(username, password)
+      
+      try:
+          icloud = pyicloud.PyiCloudService(username, password)
+      except pyicloud.exceptions.PyiCloudFailedLoginException:
+          print("Invalid username or password")
+          exit()
 
     if icloud.requires_2sa:
         if smtp_username and smtp_password:
