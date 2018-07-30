@@ -126,9 +126,10 @@ def cli(ctx, username, password, smtp_username, smtp_password, smtp_host,
     photos_endpoint = f'{base_url}/database/1/com.apple.photos.cloud/production/private'
 
     def post(url, **kwargs):
-        request = session.post(f'{endpoint}/{url}',
-                               params=params,
-                               **kwargs)
+        return session.post(f'{photos_endpoint}/{url}',
+                            params=params,
+                            **kwargs)
+        
 
     if check_index_state(post) != 'finished':
         print('iCloud Photo Library not finished indexing. Please try '
